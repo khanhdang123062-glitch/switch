@@ -3,8 +3,17 @@ import re, uuid
 with open('ThreeOneOSFive.xcodeproj/project.pbxproj', 'r') as f:
     content = f.read()
 
-view_files = ['AppGridView.swift', 'AppHackDetailView.swift', 'GameMenuView.swift', 'ToggleAssignView.swift']
-helper_files = ['ZipPatchService.swift', 'BundledIcons.swift', 'TogglePresetStore.swift', 'GameMemoryService.swift', 'DylibInjector.swift']
+view_files = [
+    'AppGridView.swift', 'AppHackDetailView.swift',
+    'GameMenuView.swift', 'ToggleAssignView.swift',
+    'SwitchMainView.swift', 'SwitchGameMenuView.swift',
+    'SwitchGameRowView.swift', 'SwitchSettingsView.swift'
+]
+helper_files = [
+    'ZipPatchService.swift', 'BundledIcons.swift',
+    'TogglePresetStore.swift', 'GameMemoryService.swift',
+    'DylibInjector.swift'
+]
 
 def add_file(content, fname, group_keyword):
     if fname in content:
