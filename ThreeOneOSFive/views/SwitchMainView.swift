@@ -24,6 +24,11 @@ private let switchGames: [SwitchGame] = [
 struct SwitchMainView: View {
     @EnvironmentObject private var appState: AppState
 
+    // Container lookups can be expensive and must not run while SwiftUI is
+    // evaluating `body`. Keep the resolved paths in state instead.
+    @State private var appContainerPaths: [String: String] = [:]
+    @State private var isLoadingAppPaths = false
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -51,12 +56,14 @@ struct SwitchMainView: View {
                     ScrollView {
                         VStack(spacing: 8) {
                             ForEach(switchGames) { game in
-                                let installed = ContainerStore.resolveAppContainerPath(bundleID: game.bundleID) != nil
+                                let containerPath = appContainerPaths[game.bundleID]
+                                let installed = containerPath != nil
+
                                 NavigationLink(destination: SwitchGameMenuView(
                                     app: InstalledApp(
                                         bundleID: game.bundleID,
                                         name: game.name,
-                                        containerPath: ContainerStore.resolveAppContainerPath(bundleID: game.bundleID) ?? "",
+                                        containerPath: containerPath ?? "",
                                         version: "DS",
                                         icon: game.icon
                                     )
@@ -69,6 +76,7 @@ struct SwitchMainView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(containerPath == nil)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -77,8 +85,42 @@ struct SwitchMainView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-
+            .task {
+                await loadAppContainerPaths()
+            }
+            .refreshable {
+                await loadAppContainerPaths()
+            }
         }
+    }
+
+    private func loadAppContainerPaths() async {
+        guard !isLoadingAppPaths else { return }
+
+        isLoadingAppPaths = true
+        defer { isLoadingAppPaths = false }
+
+        // Pass only Sendable values into the detached task. `SwitchGame`
+        // contains UIImage and should not cross concurrency domains.
+        let bundleIDs = switchGames.map(\.bundleID)
+
+        // ContainerStore performs filesystem/container discovery. Do it away
+        // from the main actor so the initial SwiftUI frame can render.
+        let paths = await Task.detached(priority: .userInitiated) {
+            var result: [String: String] = [:]
+
+            for bundleID in bundleIDs {
+                if let path = ContainerStore.resolveAppContainerPath(bundleID: bundleID) {
+                    result[bundleID] = path
+                }
+            }
+
+            return result
+        }.value
+
+        // `loadAppContainerPaths` is called from a SwiftUI task and therefore
+        // resumes on the view's actor before mutating State.
+        appContainerPaths = paths
     }
 
     private var headerView: some View {
