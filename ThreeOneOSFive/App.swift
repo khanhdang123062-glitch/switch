@@ -97,12 +97,14 @@ struct ThreeOneOSFiveApp: App {
     }
 }
 
-class AppState: ObservableObject {
+@MainActor
+final class AppState: ObservableObject {
     @Published var exploitStatus: ExploitStatus = .notStarted
     @Published var unsupportedMessage: String?
     @Published var kernelExploitRunning = false
 
     private var autoRunAttempted = false
+    private var supportCheckTask: Task<Void, Never>?
 
     var kernelExploitApplicable: Bool {
         KernelExploit.isApplicable(
@@ -115,7 +117,12 @@ class AppState: ObservableObject {
 
     var isSupported: Bool { unsupportedMessage == nil }
 
+    /// Performs the cheap OS-policy checks immediately, but moves any
+    /// filesystem/sandbox probing off the main actor. This prevents the first
+    /// SwiftUI frame from being held up by exploit/container checks.
     func detectSupport() {
+        supportCheckTask?.cancel()
+
         let v = AppInfo.versionTuple
         let supported = ExploitSupportPolicy.isSupported(
             major: v.major,
@@ -123,15 +130,18 @@ class AppState: ObservableObject {
             patch: v.patch,
             build: AppInfo.osBuild
         )
+
 #if targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--simulate-access") {
             exploitStatus = .success(method: "Simulator preview")
+            unsupportedMessage = nil
+            return
         }
 #endif
 
         unsupportedMessage = supported ? nil : "iOS \(AppInfo.osVersion) (\(AppInfo.osBuild))"
-        if let unsupportedMessage {
-            exploitStatus = .unsupported(unsupportedMessage)
+        if !supported {
+            exploitStatus = .unsupported(unsupportedMessage!)
             return
         }
 
@@ -143,8 +153,30 @@ class AppState: ObservableObject {
         )
         guard applicable else { return }
 
-        refreshKernelExploitStatus()
-        maybeAutoRunKernelExploit()
+        let requiresSandboxEscape = KernelExploit.requiresSandboxEscape
+
+        supportCheckTask = Task { [weak self] in
+            let sandboxAccess = await Task.detached(priority: .utility) {
+                guard requiresSandboxEscape else { return true }
+                return KernelExploit.hasSandboxAccess()
+            }.value
+
+            guard !Task.isCancelled, let self else { return }
+
+            if requiresSandboxEscape {
+                if sandboxAccess {
+                    if !self.exploitStatus.isSuccess {
+                        self.exploitStatus = .success(method: "kexploit")
+                        log("app: existing sandbox access is still active; skipping kernel exploit")
+                    }
+                } else if self.exploitStatus.isSuccess {
+                    self.exploitStatus = .notStarted
+                    log("app: sandbox access is no longer active")
+                }
+            }
+
+            self.maybeAutoRunKernelExploit()
+        }
     }
 
     private func maybeAutoRunKernelExploit() {
@@ -152,41 +184,29 @@ class AppState: ObservableObject {
               !exploitStatus.isSuccess,
               !exploitStatus.isFailed,
               !autoRunAttempted else { return }
+
         autoRunAttempted = true
         log("app: starting kernel exploit automatically")
         runKernelExploitIfNeeded()
     }
 
-    private func refreshKernelExploitStatus() {
-        guard !kernelExploitRunning else { return }
-
-        // iOS < 26: kernel R/W success persists (no sandbox probe)
-        // iOS >= 26: verify full sandbox escape is still active
-        if KernelExploit.requiresSandboxEscape {
-            if KernelExploit.hasSandboxAccess() {
-                if !exploitStatus.isSuccess {
-                    exploitStatus = .success(method: "kexploit")
-                    log("app: existing sandbox access is still active; skipping kernel exploit")
-                }
-            } else if exploitStatus.isSuccess {
-                exploitStatus = .notStarted
-                log("app: sandbox access is no longer active")
-            }
-        }
-    }
-
     func runKernelExploitIfNeeded() {
-        refreshKernelExploitStatus()
         guard !kernelExploitRunning,
               !exploitStatus.isSuccess,
               !exploitStatus.isFailed else { return }
+
         kernelExploitRunning = true
         exploitStatus = .notStarted
         log("app: running kernel exploit on background...")
-        DispatchQueue.global(qos: .userInitiated).async {
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let ok = KernelExploit.run()
+
             DispatchQueue.main.async {
+                guard let self else { return }
+
                 self.kernelExploitRunning = false
+
                 if ok {
                     self.exploitStatus = .success(method: "kexploit")
                     if KernelExploit.requiresSandboxEscape {
@@ -202,3 +222,4 @@ class AppState: ObservableObject {
         }
     }
 }
+
