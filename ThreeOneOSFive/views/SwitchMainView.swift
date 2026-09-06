@@ -76,15 +76,8 @@ struct SwitchMainView: View {
                     }
                 }
             }
-            .navigationBarHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: SwitchSettingsView()) {
-                        Image(systemName: "ellipsis.circle.fill")
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
+
         }
     }
 
