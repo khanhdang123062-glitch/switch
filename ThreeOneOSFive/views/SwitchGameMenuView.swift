@@ -5,51 +5,36 @@ import UniformTypeIdentifiers
 struct SwitchGameMenuView: View {
     let app: InstalledApp
     @StateObject private var patchStore = PatchProjectStore()
-    @Environment(\.appLanguage) private var language
 
     @State private var presets: [TogglePreset] = []
     @State private var isPatching = false
     @State private var patchError: String?
     @State private var showSuccess = false
-    @State private var showAssign = false
-    @State private var showDylibPicker = false
-    @State private var dylibName: String?
-    @State private var isInjecting = false
-    @State private var renamingID: Int?
-    @State private var renameText = ""
-    @State private var fovValue: Double = {
-        let v = UserDefaults.standard.double(forKey: "fov.value")
-        return v == 0 ? 50 : v
-    }()
-    @State private var offsetNoRecoil = UserDefaults.standard.string(forKey: "offset.norecoil") ?? ""
-    @State private var offsetGhost = UserDefaults.standard.string(forKey: "offset.ghost") ?? ""
-    @State private var offsetSpeed = UserDefaults.standard.string(forKey: "offset.speed") ?? ""
-    @State private var editingOffset: String?
-    @State private var offsetInput = ""
-    @State private var noRecoilEnabled = false
-    @State private var ghostEnabled = false
-    @State private var speedEnabled = false
-
-    private let totalToggles = 5
+    @State private var selectedTab = 0
 
     var body: some View {
         ZStack {
-            Color(red: 0.06, green: 0.06, blue: 0.08).ignoresSafeArea()
+            Color(red: 0.1, green: 0.1, blue: 0.12).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Game header
+                // Header
                 gameHeader
 
-                ScrollView {
-                    VStack(spacing: 14) {
-                        patchSection
-                        fovSection
-                        otherSection
+                // Tab content
+                if selectedTab == 0 {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            patchSection
+                            fovSection
+                        }
+                        .padding(16)
                     }
-                    .padding(16)
+                } else {
+                    importSection
                 }
 
-                bottomButtons
+                // Tab bar
+                tabBar
             }
         }
         .navigationTitle("")
@@ -67,90 +52,72 @@ struct SwitchGameMenuView: View {
         )) {
             Button("OK", role: .cancel) { patchError = nil }
         } message: { Text(patchError ?? "") }
-        .alert("Đổi tên", isPresented: Binding(
-            get: { renamingID != nil },
-            set: { if !$0 { renamingID = nil } }
-        )) {
-            TextField("Tên mới", text: $renameText)
-            Button("Lưu") {
-                if let id = renamingID, !renameText.isEmpty,
-                   let idx = presets.firstIndex(where: { $0.id == id }) {
-                    presets[idx].name = renameText
-                    TogglePresetStore.save(presets, for: app.bundleID)
-                }
-                renamingID = nil; renameText = ""
-            }
-            Button("Huỷ", role: .cancel) { renamingID = nil; renameText = "" }
-        } message: { Text("Nhập tên mới cho toggle \(renamingID ?? 0)") }
-        .alert("Nhập offset", isPresented: Binding(
-            get: { editingOffset != nil },
-            set: { if !$0 { editingOffset = nil } }
-        )) {
-            TextField("0x00000000", text: $offsetInput).keyboardType(.asciiCapable).autocorrectionDisabled()
-            Button("Lưu") {
-                if let key = editingOffset {
-                    UserDefaults.standard.set(offsetInput, forKey: key)
-                    switch key {
-                    case "offset.norecoil": offsetNoRecoil = offsetInput
-                    case "offset.ghost": offsetGhost = offsetInput
-                    case "offset.speed": offsetSpeed = offsetInput
-                    default: break
-                    }
-                }
-                editingOffset = nil; offsetInput = ""
-            }
-            Button("Huỷ", role: .cancel) { editingOffset = nil; offsetInput = "" }
-        } message: { Text("Nhập hex offset.") }
-        .sheet(isPresented: $showDylibPicker) {
-            FileDocumentPicker(
-                allowedContentTypes: [.data],
-                copiesSelectedDocument: true,
-                allowsMultipleSelection: false,
-                onSelection: { result in
-                    showDylibPicker = false
-                    handleDylibImport(result: result)
-                },
-                onCancel: { showDylibPicker = false }
-            )
-            .ignoresSafeArea()
-        }
-        .sheet(isPresented: $showAssign, onDismiss: {
-            presets = TogglePresetStore.presets(for: app.bundleID)
-        }) {
-            NavigationStack { ToggleAssignView(app: app, patchStore: patchStore) }
-        }
     }
 
-    // MARK: - Game Header
+    // MARK: - Header
 
     private var gameHeader: some View {
-        HStack(spacing: 14) {
-            Group {
-                if let icon = app.icon {
-                    Image(uiImage: icon)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.1))
-                        .overlay(Image(systemName: "gamecontroller.fill").foregroundStyle(.white.opacity(0.4)))
+        VStack(spacing: 12) {
+            HStack(spacing: 14) {
+                Group {
+                    if let icon = app.icon {
+                        Image(uiImage: icon)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.1))
+                            .overlay(Image(systemName: "gamecontroller.fill")
+                                .font(.system(size: 24))
+                                .foregroundStyle(.white.opacity(0.4)))
+                    }
                 }
-            }
-            .frame(width: 48, height: 48)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(app.displayName)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(app.bundleID)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.white.opacity(0.4))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.displayName)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Ứng dụng: \(app.displayName)")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.4))
+                    Text("Bundle: \(app.bundleID)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.white.opacity(0.4))
+                        .lineLimit(1)
+                }
+                Spacer()
             }
-            Spacer()
+
+            // Open game button
+            Button(action: openApp) {
+                HStack(spacing: 8) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Chạy")
+                        .font(.system(size: 16, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(Color.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            // Status
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(presets.filter(\.isEnabled).isEmpty ? Color.gray : Color.green)
+                    .frame(width: 8, height: 8)
+                Text(presets.filter(\.isEnabled).isEmpty ? "Patch chưa áp dụng" : "Patch đã bật")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.5))
+                Spacer()
+            }
         }
         .padding(16)
-        .background(Color.white.opacity(0.04))
+        .background(Color.white.opacity(0.05))
         .overlay(Rectangle().frame(height: 0.5).foregroundStyle(Color.white.opacity(0.1)), alignment: .bottom)
     }
 
@@ -158,53 +125,73 @@ struct SwitchGameMenuView: View {
 
     private var patchSection: some View {
         VStack(spacing: 0) {
-            sectionHeader("PATCH")
+            HStack {
+                Text("PATCH")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                Spacer()
+                // HACK button
+                Button(action: applyHack) {
+                    HStack(spacing: 6) {
+                        if isPatching {
+                            ProgressView().tint(.white).controlSize(.small)
+                        } else {
+                            Image(systemName: "bolt.fill").font(.system(size: 12, weight: .bold))
+                        }
+                        Text("HACK").font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(presets.filter(\.isEnabled).isEmpty ? Color.gray : Color.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .disabled(isPatching || presets.filter(\.isEnabled).isEmpty)
+            }
+            .padding(.bottom, 10)
+
             VStack(spacing: 0) {
-                ForEach(1...totalToggles, id: \.self) { id in
+                ForEach(1...5, id: \.self) { id in
                     let preset = presets.first { $0.id == id }
                     let hasFile = preset != nil
                     VStack(spacing: 0) {
-                        HStack(spacing: 12) {
-                            Text("\(id)")
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                .foregroundStyle(hasFile ? Color.green : .white.opacity(0.2))
-                                .frame(width: 24)
-                                .onLongPressGesture {
-                                    renameText = preset?.name ?? defaultName(id)
-                                    renamingID = id
-                                }
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(preset?.name ?? defaultName(id))
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundStyle(hasFile ? .white : .white.opacity(0.3))
-                                    Button {
-                                        renameText = preset?.name ?? defaultName(id)
-                                        renamingID = id
-                                    } label: {
-                                        Image(systemName: "pencil").font(.system(size: 11)).foregroundStyle(.white.opacity(0.25))
-                                    }.buttonStyle(.plain)
-                                }
-                                Text(hasFile ? (preset?.fileType.uppercased() ?? "") : "Chưa có file")
-                                    .font(.system(size: 10, weight: .semibold))
+                        HStack(spacing: 14) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(toggleName(id))
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(hasFile ? .white : .white.opacity(0.35))
+                                Text(hasFile ? (preset?.fileType.uppercased() ?? "") : "Chưa có file — vào tab Nhập file")
+                                    .font(.caption2)
                                     .foregroundStyle(hasFile ? Color.green.opacity(0.8) : .white.opacity(0.2))
                             }
                             Spacer()
                             if hasFile, let idx = presets.firstIndex(where: { $0.id == id }) {
                                 Toggle("", isOn: Binding(
                                     get: { presets[idx].isEnabled },
-                                    set: { val in presets[idx].isEnabled = val; TogglePresetStore.save(presets, for: app.bundleID) }
-                                )).labelsHidden().tint(.green)
+                                    set: { val in
+                                        presets[idx].isEnabled = val
+                                        TogglePresetStore.save(presets, for: app.bundleID)
+                                    }
+                                ))
+                                .labelsHidden()
+                                .tint(.green)
                             } else {
-                                Toggle("", isOn: .constant(false)).labelsHidden().disabled(true).opacity(0.3)
+                                Toggle("", isOn: .constant(false))
+                                    .labelsHidden()
+                                    .disabled(true)
+                                    .opacity(0.25)
                             }
                         }
-                        .padding(.horizontal, 14).padding(.vertical, 12)
-                        if id < totalToggles { Divider().background(Color.white.opacity(0.08)).padding(.leading, 50) }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 13)
+                        .background(Color.white.opacity(0.06))
+
+                        if id < 5 {
+                            Divider().background(Color.white.opacity(0.08)).padding(.leading, 16)
+                        }
                     }
                 }
             }
-            .background(Color.white.opacity(0.07))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
@@ -213,160 +200,133 @@ struct SwitchGameMenuView: View {
 
     private var fovSection: some View {
         VStack(spacing: 0) {
-            sectionHeader("FOV")
+            HStack {
+                Text("FOV")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                Spacer()
+            }
+            .padding(.bottom, 10)
+
+            @State var fovValue: Double = {
+                let v = UserDefaults.standard.double(forKey: "fov.\(app.bundleID)")
+                return v == 0 ? 50 : v
+            }()
+
             VStack(spacing: 12) {
                 HStack {
-                    Text("Field of View").font(.system(size: 15, weight: .medium)).foregroundStyle(.white)
+                    Text("Field of View")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white)
                     Spacer()
-                    Text("\(Int(fovValue))").font(.system(size: 15, weight: .bold, design: .monospaced)).foregroundStyle(.green).frame(width: 36)
+                    Text("\(Int(fovValue))px")
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.green)
                 }
-                Slider(value: $fovValue, in: 1...100, step: 1) { Text("FOV") }
+                Slider(value: $fovValue, in: 1...200, step: 1) { Text("FOV") }
                     minimumValueLabel: { Text("1").font(.caption).foregroundStyle(.white.opacity(0.4)) }
-                    maximumValueLabel: { Text("100").font(.caption).foregroundStyle(.white.opacity(0.4)) }
-                    .tint(.green)
-                    .onChange(of: fovValue) { val in UserDefaults.standard.set(val, forKey: "fov.value") }
+                    maximumValueLabel: { Text("200").font(.caption).foregroundStyle(.white.opacity(0.4)) }
+                    .tint(.blue)
+                    .onChange(of: fovValue) { val in
+                        UserDefaults.standard.set(val, forKey: "fov.\(app.bundleID)")
+                    }
                 HStack {
-                    ForEach([25, 50, 75, 100], id: \.self) { val in
+                    ForEach([50, 100, 141, 200], id: \.self) { val in
                         Button { fovValue = Double(val) } label: {
-                            Text("\(val)").font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Int(fovValue) == val ? .black : .green)
-                                .frame(maxWidth: .infinity).frame(height: 28)
-                                .background(Int(fovValue) == val ? Color.green : Color.green.opacity(0.15))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            Text("\(val)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Int(fovValue) == val ? .white : .white.opacity(0.5))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 30)
+                                .background(Int(fovValue) == val ? Color.blue : Color.white.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                     }
                 }
             }
             .padding(14)
-            .background(Color.white.opacity(0.07))
+            .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
-    // MARK: - Other Section
+    // MARK: - Import Section
 
-    private var otherSection: some View {
-        VStack(spacing: 0) {
-            sectionHeader("OTHER")
-            VStack(spacing: 0) {
-                offsetRow(index: "A", title: "No Recoil", key: "offset.norecoil", value: $offsetNoRecoil, isOn: $noRecoilEnabled) { on in applyOtherPatch(offset: offsetNoRecoil, enable: on) }
-                Divider().background(Color.white.opacity(0.08)).padding(.leading, 50)
-                offsetRow(index: "B", title: "Ghost Mode", key: "offset.ghost", value: $offsetGhost, isOn: $ghostEnabled) { on in applyOtherPatch(offset: offsetGhost, enable: on) }
-                Divider().background(Color.white.opacity(0.08)).padding(.leading, 50)
-                offsetRow(index: "C", title: "Speed Hack", key: "offset.speed", value: $offsetSpeed, isOn: $speedEnabled) { on in applyOtherPatch(offset: offsetSpeed, enable: on) }
+    private var importSection: some View {
+        SwitchImportView(app: app, patchStore: patchStore, presets: $presets)
+    }
+
+    // MARK: - Tab Bar
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            tabItem(index: 0, icon: "square.grid.2x2.fill", label: "Patch")
+            tabItem(index: 1, icon: "square.and.arrow.down.fill", label: "Nhập file")
+        }
+        .background(Color.black.opacity(0.5))
+        .overlay(Rectangle().frame(height: 0.5).foregroundStyle(Color.white.opacity(0.1)), alignment: .top)
+    }
+
+    private func tabItem(index: Int, icon: String, label: String) -> some View {
+        Button(action: { selectedTab = index }) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                Text(label)
+                    .font(.system(size: 10, weight: .medium))
             }
-            .background(Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .foregroundStyle(selectedTab == index ? .green : .white.opacity(0.4))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
         }
     }
 
-    private func offsetRow(index: String, title: String, key: String, value: Binding<String>, isOn: Binding<Bool>, onToggle: @escaping (Bool) -> Void) -> some View {
-        HStack(spacing: 12) {
-            Text(index).font(.system(size: 13, weight: .bold, design: .monospaced))
-                .foregroundStyle(value.wrappedValue.isEmpty ? .white.opacity(0.2) : .green).frame(width: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(value.wrappedValue.isEmpty ? .white.opacity(0.3) : .white)
-                Text(value.wrappedValue.isEmpty ? "Chưa có offset" : value.wrappedValue)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(value.wrappedValue.isEmpty ? .white.opacity(0.2) : Color.green.opacity(0.8))
+    // MARK: - Toggle Names
+    // *** ĐẶT TÊN TOGGLE CHO TỪNG GAME Ở ĐÂY ***
+    private func toggleName(_ id: Int) -> String {
+        switch app.bundleID {
+        case "com.garena.game.kgvn": // Liên Quân
+            switch id {
+            case 1: return "Toggle 1" // Đổi tên ở đây
+            case 2: return "Toggle 2"
+            case 3: return "Toggle 3"
+            case 4: return "Toggle 4"
+            case 5: return "Toggle 5"
+            default: return "Toggle \(id)"
             }
-            Spacer()
-            Button {
-                offsetInput = value.wrappedValue; editingOffset = key
-            } label: {
-                Text(value.wrappedValue.isEmpty ? "Nhập" : "Sửa").font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.black).padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(value.wrappedValue.isEmpty ? Color.white.opacity(0.2) : Color.green)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }.buttonStyle(.plain)
-            Toggle("", isOn: Binding(get: { isOn.wrappedValue }, set: { val in isOn.wrappedValue = val; onToggle(val) }))
-                .labelsHidden().tint(.green).disabled(value.wrappedValue.isEmpty).opacity(value.wrappedValue.isEmpty ? 0.3 : 1)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 12)
-    }
-
-    // MARK: - Bottom Buttons
-
-    private var bottomButtons: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Button(action: { showAssign = true }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "square.and.arrow.down.fill").font(.system(size: 13, weight: .semibold))
-                        Text("Nhập file").font(.system(size: 14, weight: .semibold))
-                    }
-                    .foregroundStyle(.green).frame(maxWidth: .infinity).frame(height: 46)
-                    .background(Color.green.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.green.opacity(0.4), lineWidth: 1))
-                }
-                Button(action: { showDylibPicker = true }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: 13, weight: .semibold))
-                        Text(dylibName ?? "Dylib").font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                    }
-                    .foregroundStyle(dylibName != nil ? .black : .green).frame(maxWidth: .infinity).frame(height: 46)
-                    .background(dylibName != nil ? Color.green : Color.green.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.green.opacity(0.4), lineWidth: 1))
-                }
-                Button(action: applyHack) {
-                    HStack(spacing: 6) {
-                        if isPatching { ProgressView().tint(.black).controlSize(.small) }
-                        else { Image(systemName: "bolt.fill").font(.system(size: 13, weight: .bold)) }
-                        Text("HACK").font(.system(size: 14, weight: .bold)).kerning(2)
-                    }
-                    .foregroundStyle(.black).frame(maxWidth: .infinity).frame(height: 46)
-                    .background(presets.filter(\.isEnabled).isEmpty ? Color.white.opacity(0.3) : Color.green)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .disabled(isPatching || presets.filter(\.isEnabled).isEmpty)
+        case "com.dts.freefireth", "com.dts.freefiremax": // Free Fire
+            switch id {
+            case 1: return "Toggle 1"
+            case 2: return "Toggle 2"
+            case 3: return "Toggle 3"
+            case 4: return "Toggle 4"
+            case 5: return "Toggle 5"
+            default: return "Toggle \(id)"
             }
-            Button(action: injectAndOpen) {
-                HStack(spacing: 8) {
-                    if isInjecting { ProgressView().tint(.black).controlSize(.small) }
-                    else { Image(systemName: "play.fill").font(.system(size: 15, weight: .semibold)) }
-                    Text(isInjecting ? "ĐANG MỞ..." : "MỞ GAME").font(.system(size: 17, weight: .bold)).kerning(2)
-                }
-                .foregroundStyle(.black).frame(maxWidth: .infinity).frame(height: 52)
-                .background(Color.green)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .shadow(color: Color.green.opacity(0.4), radius: 8, x: 0, y: 3)
+        case "vn.vng.pubgmobile": // PUBG
+            switch id {
+            case 1: return "Toggle 1"
+            case 2: return "Toggle 2"
+            case 3: return "Toggle 3"
+            case 4: return "Toggle 4"
+            case 5: return "Toggle 5"
+            default: return "Toggle \(id)"
             }
-            .disabled(isInjecting)
-        }
-        .padding(.horizontal, 16).padding(.bottom, 24).padding(.top, 8)
-        .background(Color.black.opacity(0.3))
-    }
-
-    private func sectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.4)).kerning(3)
-            Spacer()
-        }.padding(.bottom, 8)
-    }
-
-    private func defaultName(_ id: Int) -> String {
-        switch id {
-        case 1: return "Mod Skin"
-        case 2: return "Hack Map"
-        case 3: return "Cam Xa"
-        case 4: return "Toggle 4"
-        case 5: return "Toggle 5"
-        default: return "Toggle \(id)"
+        case "com.gameversestudio.modern.ops.fps.gun.games": // Modern Ops
+            switch id {
+            case 1: return "Toggle 1"
+            case 2: return "Toggle 2"
+            case 3: return "Toggle 3"
+            case 4: return "Toggle 4"
+            case 5: return "Toggle 5"
+            default: return "Toggle \(id)"
+            }
+        default:
+            return "Toggle \(id)"
         }
     }
 
-    private func handleDylibImport(result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let dest = docs.appendingPathComponent(url.lastPathComponent)
-        try? FileManager.default.removeItem(at: dest)
-        try? FileManager.default.copyItem(at: url, to: dest)
-        dylibName = url.lastPathComponent
-    }
+    // MARK: - Actions
 
     private func applyHack() {
         guard !isPatching else { return }
@@ -382,44 +342,15 @@ struct SwitchGameMenuView: View {
                 }
                 if preset.fileType == "zip" {
                     do { _ = try ZipPatchService.apply(zipURL: fileURL, bundleID: app.bundleID) }
-                    catch { errors.append("Toggle \(preset.id): \(error.localizedDescription)") }
-                } else { patchStore.importPackage(at: fileURL) }
+                    catch { errors.append("\(error.localizedDescription)") }
+                } else {
+                    patchStore.importPackage(at: fileURL)
+                }
             }
             DispatchQueue.main.async {
                 isPatching = false
                 if errors.isEmpty { showSuccess = true }
                 else { patchError = errors.joined(separator: "\n") }
-            }
-        }
-    }
-
-    private func applyOtherPatch(offset: String, enable: Bool) {
-        guard !offset.isEmpty else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            do { try GameMemoryService.applyBoolPatch(offset: offset, value: enable, bundleID: app.bundleID) }
-            catch { DispatchQueue.main.async { patchError = error.localizedDescription } }
-        }
-    }
-
-    private func injectAndOpen() {
-        isInjecting = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            let dylibs = DylibInjector.availableDylibs()
-            if let dylib = dylibs.first {
-                let procName: String
-                switch app.bundleID {
-                case "com.gameversestudio.modern.ops.fps.gun.games": procName = "ModernOpsFPSGunGames"
-                case "com.garena.game.kgvn": procName = "GarenaMobile"
-                case "com.dts.freefireth": procName = "freefire"
-                case "com.dts.freefiremax": procName = "freefiremax"
-                case "vn.vng.pubgmobile": procName = "PUBGMOBILE"
-                default: procName = app.bundleID.components(separatedBy: ".").last ?? app.bundleID
-                }
-                try? DylibInjector.inject(dylibURL: dylib, into: app.bundleID, processName: procName)
-            }
-            DispatchQueue.main.async {
-                isInjecting = false
-                openApp()
             }
         }
     }
