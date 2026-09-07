@@ -7,7 +7,8 @@ view_files = [
     'AppGridView.swift', 'AppHackDetailView.swift',
     'GameMenuView.swift', 'ToggleAssignView.swift',
     'SwitchMainView.swift', 'SwitchGameMenuView.swift',
-    'SwitchGameRowView.swift', 'SwitchSettingsView.swift'
+    'SwitchGameRowView.swift', 'SwitchSettingsView.swift',
+    'SwitchImportView.swift'
 ]
 helper_files = [
     'ZipPatchService.swift', 'BundledIcons.swift',
