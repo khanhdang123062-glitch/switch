@@ -287,11 +287,9 @@ struct SwitchGameMenuView: View {
         switch app.bundleID {
         case "com.garena.game.kgvn": // Liên Quân
             switch id {
-            case 1: return "Toggle 1" // Đổi tên ở đây
-            case 2: return "Toggle 2"
-            case 3: return "Toggle 3"
-            case 4: return "Toggle 4"
-            case 5: return "Toggle 5"
+            case 1: return "hack map" // Đổi tên ở đây
+            case 2: return "unlock skin"
+            case 3: return "cam xa" 
             default: return "Toggle \(id)"
             }
         case "com.dts.freefireth", "com.dts.freefiremax": // Free Fire
