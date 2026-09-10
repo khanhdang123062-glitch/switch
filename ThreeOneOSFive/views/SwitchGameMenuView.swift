@@ -244,7 +244,7 @@ struct SwitchGameMenuView: View {
             .background(hasFile ? Color.purple : Color.gray)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .disabled(!hasFile || isPatching || !appState.exploitStatus.isSuccess)
+        .disabled(!hasFile || isPatching)
         .padding(.top, 10)
     }
 
