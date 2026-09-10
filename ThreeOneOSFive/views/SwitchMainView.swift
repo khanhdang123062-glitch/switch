@@ -76,8 +76,7 @@ struct SwitchMainView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
-                                .disabled(containerPath == nil)
-                            }
+                                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 24)
