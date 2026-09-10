@@ -3,6 +3,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 struct SwitchGameMenuView: View {
+    @EnvironmentObject private var appState: AppState
     let app: InstalledApp
     @StateObject private var patchStore = PatchProjectStore()
 
@@ -11,8 +12,6 @@ struct SwitchGameMenuView: View {
     @State private var patchError: String?
     @State private var showSuccess = false
     @State private var selectedTab = 0
-    @State private var showModSkinPicker = false
-    @State private var isModSkinning = false
 
     var body: some View {
         ZStack {
@@ -41,22 +40,31 @@ struct SwitchGameMenuView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !appState.exploitStatus.isSuccess {
+                HStack(spacing: 10) {
+                    if appState.kernelExploitRunning {
+                        ProgressView().tint(.orange).scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "shield.slash.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.orange)
+                    }
+                    Text(appState.kernelExploitRunning
+                         ? "Đang kích hoạt exploit..."
+                         : "Exploit chưa active — chức năng patch bị khoá")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.orange)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.orange.opacity(0.12))
+            }
+        }
         .onAppear {
             presets = TogglePresetStore.presets(for: app.bundleID)
             patchStore.reload()
-        }
-        .sheet(isPresented: $showModSkinPicker) {
-            FileDocumentPicker(
-                allowedContentTypes: [.data],
-                copiesSelectedDocument: true,
-                allowsMultipleSelection: false,
-                onSelection: { result in
-                    showModSkinPicker = false
-                    handleModSkin(result: result)
-                },
-                onCancel: { showModSkinPicker = false }
-            )
-            .ignoresSafeArea()
         }
         .alert("Đã mod thành công!", isPresented: $showSuccess) {
             Button("OK", role: .cancel) {}
@@ -161,26 +169,7 @@ struct SwitchGameMenuView: View {
                     .background(presets.filter(\.isEnabled).isEmpty ? Color.gray : Color.green)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .disabled(isPatching || presets.filter(\.isEnabled).isEmpty)
-
-                if app.bundleID == "com.garena.game.kgvn" {
-                    Button(action: { showModSkinPicker = true }) {
-                        HStack(spacing: 6) {
-                            if isModSkinning {
-                                ProgressView().tint(.white).controlSize(.small)
-                            } else {
-                                Image(systemName: "tshirt.fill").font(.system(size: 12, weight: .bold))
-                            }
-                            Text("Mod Skin").font(.system(size: 13, weight: .bold))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .background(Color.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .disabled(isModSkinning)
-                }
+                .disabled(isPatching || presets.filter(\.isEnabled).isEmpty || !appState.exploitStatus.isSuccess)
             }
             .padding(.bottom, 10)
 
@@ -321,11 +310,9 @@ struct SwitchGameMenuView: View {
         switch app.bundleID {
         case "com.garena.game.kgvn": // Liên Quân
             switch id {
-            case 1: return "Toggle 1" // Đổi tên ở đây
-            case 2: return "Toggle 2"
-            case 3: return "Toggle 3"
-            case 4: return "Toggle 4"
-            case 5: return "Toggle 5"
+            case 1: return "hack map" // Đổi tên ở đây
+            case 2: return "unlock skin"
+            case 3: return "cam xa" 
             default: return "Toggle \(id)"
             }
         case "com.dts.freefireth", "com.dts.freefiremax": // Free Fire
@@ -385,27 +372,6 @@ struct SwitchGameMenuView: View {
                 isPatching = false
                 if errors.isEmpty { showSuccess = true }
                 else { patchError = errors.joined(separator: "\n") }
-            }
-        }
-    }
-
-    private func handleModSkin(result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-        isModSkinning = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                _ = try ZipPatchService.apply(zipURL: url, bundleID: app.bundleID)
-                DispatchQueue.main.async {
-                    isModSkinning = false
-                    showSuccess = true
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    isModSkinning = false
-                    patchError = error.localizedDescription
-                }
             }
         }
     }
