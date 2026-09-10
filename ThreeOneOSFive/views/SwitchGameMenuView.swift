@@ -26,7 +26,9 @@ struct SwitchGameMenuView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             patchSection
-                            fovSection
+                            if app.bundleID != "com.garena.game.kgvn" {
+                                fovSection
+                            }
                         }
                         .padding(16)
                     }
@@ -174,7 +176,10 @@ struct SwitchGameMenuView: View {
             .padding(.bottom, 10)
 
             VStack(spacing: 0) {
-                ForEach(1...5, id: \.self) { id in
+                let toggleIDs: [Int] = app.bundleID == "com.garena.game.kgvn"
+                    ? [1, 3, 4, 5]
+                    : [1, 2, 3, 4, 5]
+                ForEach(toggleIDs, id: \.self) { id in
                     let preset = presets.first { $0.id == id }
                     let hasFile = preset != nil
                     VStack(spacing: 0) {
@@ -209,14 +214,38 @@ struct SwitchGameMenuView: View {
                         .padding(.vertical, 13)
                         .background(Color.white.opacity(0.06))
 
-                        if id < 5 {
+                        if id != toggleIDs.last {
                             Divider().background(Color.white.opacity(0.08)).padding(.leading, 16)
                         }
                     }
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            if app.bundleID == "com.garena.game.kgvn" {
+                modSkinButton
+            }
         }
+    }
+
+    private var modSkinButton: some View {
+        let preset = presets.first { $0.id == 2 }
+        let hasFile = preset != nil
+        return Button(action: applyModSkin) {
+            HStack(spacing: 10) {
+                Image(systemName: "tshirt.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("MOD SKIN")
+                    .font(.system(size: 16, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(hasFile ? Color.purple : Color.gray)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .disabled(!hasFile || isPatching || !appState.exploitStatus.isSuccess)
+        .padding(.top, 10)
     }
 
     // MARK: - FOV Section
@@ -348,6 +377,33 @@ struct SwitchGameMenuView: View {
     }
 
     // MARK: - Actions
+
+    private func applyModSkin() {
+        guard !isPatching,
+              let preset = presets.first(where: { $0.id == 2 }),
+              FileManager.default.fileExists(atPath: preset.filePath) else { return }
+        isPatching = true
+        patchError = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fileURL = URL(fileURLWithPath: preset.filePath)
+            do {
+                if preset.fileType == "zip" {
+                    _ = try ZipPatchService.apply(zipURL: fileURL, bundleID: app.bundleID)
+                } else {
+                    patchStore.importPackage(at: fileURL)
+                }
+                DispatchQueue.main.async {
+                    isPatching = false
+                    showSuccess = true
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    isPatching = false
+                    patchError = error.localizedDescription
+                }
+            }
+        }
+    }
 
     private func applyHack() {
         guard !isPatching else { return }
