@@ -29,6 +29,8 @@ struct GameMenuView: View {
     @State private var showInjectSuccess = false
     @State private var showDylibPicker = false
     @State private var dylibName: String? = nil
+    @State private var showModSkinPicker = false
+    @State private var isModSkinPatching = false
 
     private let totalToggles = 5
 
@@ -40,6 +42,7 @@ struct GameMenuView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         patchSection
+                        modSkinButton
                         fovSection
                         otherSection
                     }
@@ -134,6 +137,19 @@ struct GameMenuView: View {
                     handleDylibImport(result: result)
                 },
                 onCancel: { showDylibPicker = false }
+            )
+            .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showModSkinPicker) {
+            FileDocumentPicker(
+                allowedContentTypes: [.data],
+                copiesSelectedDocument: true,
+                allowsMultipleSelection: false,
+                onSelection: { result in
+                    showModSkinPicker = false
+                    handleModSkinImport(result: result)
+                },
+                onCancel: { showModSkinPicker = false }
             )
             .ignoresSafeArea()
         }
@@ -361,6 +377,29 @@ struct GameMenuView: View {
         .padding(.vertical, 12)
     }
 
+    // MARK: - Mod Skin Button
+    private var modSkinButton: some View {
+        Button(action: { showModSkinPicker = true }) {
+            HStack(spacing: 10) {
+                if isModSkinPatching {
+                    ProgressView().tint(.black).controlSize(.small)
+                } else {
+                    Image(systemName: "tshirt.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                Text(isModSkinPatching ? "ĐANG MOD..." : "MOD SKIN")
+                    .font(.system(size: 16, weight: .bold))
+                    .kerning(2)
+            }
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(isModSkinPatching ? Color.secondary : AppTheme.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .disabled(isModSkinPatching)
+    }
+
     // MARK: - Bottom Buttons
 
     private var bottomButtons: some View {
@@ -515,6 +554,34 @@ struct GameMenuView: View {
                 try GameMemoryService.applyBoolPatch(offset: offset, value: enable, bundleID: app.bundleID)
             } catch {
                 DispatchQueue.main.async { patchError = error.localizedDescription }
+            }
+        }
+    }
+
+    private func handleModSkinImport(result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            patchError = error.localizedDescription
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            isModSkinPatching = true
+            patchError = nil
+            let bundleID = app.bundleID
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    _ = try ZipPatchService.apply(zipURL: url, bundleID: bundleID)
+                    DispatchQueue.main.async {
+                        isModSkinPatching = false
+                        showSuccess = true
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        isModSkinPatching = false
+                        patchError = error.localizedDescription
+                    }
+                }
             }
         }
     }
