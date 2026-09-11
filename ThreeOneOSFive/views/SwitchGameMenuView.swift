@@ -43,6 +43,19 @@ struct SwitchGameMenuView: View {
             }
         }
         .navigationTitle("")
+        .sheet(isPresented: $showModSkinPicker) {
+            FileDocumentPicker(
+                allowedContentTypes: [.data],
+                copiesSelectedDocument: true,
+                allowsMultipleSelection: false,
+                onSelection: { result in
+                    showModSkinPicker = false
+                    handleModSkinImport(result: result)
+                },
+                onCancel: { showModSkinPicker = false }
+            )
+            .ignoresSafeArea()
+        }
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
             if !appState.exploitStatus.isSuccess {
@@ -231,22 +244,24 @@ struct SwitchGameMenuView: View {
     }
 
     private var modSkinButton: some View {
-        let preset = presets.first { $0.id == 2 }
-        let hasFile = preset != nil
-        return Button(action: applyModSkin) {
+        Button(action: { showModSkinPicker = true }) {
             HStack(spacing: 10) {
-                Image(systemName: "tshirt.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("MOD SKIN")
+                if isModSkinPatching {
+                    ProgressView().tint(.white).controlSize(.small)
+                } else {
+                    Image(systemName: "tshirt.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                Text(isModSkinPatching ? "ĐANG MOD..." : "MOD SKIN")
                     .font(.system(size: 16, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(hasFile ? Color.purple : Color.gray)
+            .background(isModSkinPatching ? Color.secondary : Color.purple)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .disabled(!hasFile || isPatching)
+        .disabled(isModSkinPatching)
         .padding(.top, 10)
     }
 
@@ -379,6 +394,34 @@ struct SwitchGameMenuView: View {
     }
 
     // MARK: - Actions
+
+    private func handleModSkinImport(result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            patchError = error.localizedDescription
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            isModSkinPatching = true
+            patchError = nil
+            let bundleID = app.bundleID
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    _ = try ZipPatchService.apply(zipURL: url, bundleID: bundleID)
+                    DispatchQueue.main.async {
+                        isModSkinPatching = false
+                        showSuccess = true
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        isModSkinPatching = false
+                        patchError = error.localizedDescription
+                    }
+                }
+            }
+        }
+    }
 
     private func applyModSkin() {
         guard !isPatching,
