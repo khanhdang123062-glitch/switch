@@ -9,6 +9,8 @@ struct SwitchGameMenuView: View {
 
     @State private var presets: [TogglePreset] = []
     @State private var isPatching = false
+    @State private var showModSkinPicker = false
+    @State private var isModSkinPatching = false
     @State private var patchError: String?
     @State private var showSuccess = false
     @State private var selectedTab = 0
