@@ -15,8 +15,14 @@ struct SwitchGameMenuView: View {
     @State private var showSuccess = false
     @State private var selectedTab = 0
     
-    // State riêng cho PUBG Menu (phân chia theo Tab như ảnh yêu cầu)
+    // State riêng cho PUBG Menu
     @State private var pubgMenuTab: PUBGMenuTab = .visuals
+    @State private var pubgBoxESP = true
+    @State private var pubgSkeletonESP = false
+    @State private var pubgItemESP = false
+    @State private var pubgAimbot = false
+    @State private var pubgNoRecoil = true
+    @State private var pubgFOVCircle = true
 
     enum PUBGMenuTab: String, CaseIterable {
         case visuals = "Visuals"
@@ -36,7 +42,6 @@ struct SwitchGameMenuView: View {
                 if selectedTab == 0 {
                     ScrollView {
                         VStack(spacing: 16) {
-                            // Kiểm tra nếu là PUBG thì dùng menu chia tab mới, ngược lại dùng layout cũ cho các game khác
                             if isPUBG(app.bundleID) {
                                 pubgCustomPatchSection
                             } else {
@@ -108,7 +113,6 @@ struct SwitchGameMenuView: View {
         } message: { Text(patchError ?? "") }
     }
 
-    // Kiểm tra nhóm game PUBG
     private func isPUBG(_ bundleID: String) -> Bool {
         return ["vn.vng.pubgmobile", "com.tencent.ig", "com.pubg.krmobile"].contains(bundleID)
     }
@@ -149,7 +153,6 @@ struct SwitchGameMenuView: View {
                 Spacer()
             }
 
-            // Open game button
             Button(action: openApp) {
                 HStack(spacing: 8) {
                     Image(systemName: "play.fill")
@@ -164,12 +167,11 @@ struct SwitchGameMenuView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
-            // Status
             HStack(spacing: 8) {
                 Circle()
-                    .fill(presets.filter(\.isEnabled).isEmpty ? Color.gray : Color.green)
+                    .fill(presets.filter(\.isEnabled).isEmpty && !isPUBG(app.bundleID) ? Color.gray : Color.green)
                     .frame(width: 8, height: 8)
-                Text(presets.filter(\.isEnabled).isEmpty ? "Patch chưa áp dụng" : "Patch đã bật")
+                Text(presets.filter(\.isEnabled).isEmpty && !isPUBG(app.bundleID) ? "Patch chưa áp dụng" : "Patch đã bật")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.5))
                 Spacer()
@@ -180,11 +182,10 @@ struct SwitchGameMenuView: View {
         .overlay(Rectangle().frame(height: 0.5).foregroundStyle(Color.white.opacity(0.1)), alignment: .bottom)
     }
 
-    // MARK: - PUBG Custom Menu Section (Giao diện chia tab mới riêng cho PUBG)
+    // MARK: - PUBG Custom Menu Section
 
     private var pubgCustomPatchSection: some View {
         VStack(spacing: 12) {
-            // Segmented Picker chọn Tab cho PUBG
             Picker("PUBG Menu Tab", selection: $pubgMenuTab) {
                 ForEach(PUBGMenuTab.allCases, id: \.self) { tab in
                     Text(tab.rawValue).tag(tab)
@@ -192,7 +193,6 @@ struct SwitchGameMenuView: View {
             }
             .pickerStyle(.segmented)
 
-            // Nội dung thay đổi theo Tab của PUBG
             VStack(spacing: 0) {
                 switch pubgMenuTab {
                 case .visuals:
@@ -218,11 +218,11 @@ struct SwitchGameMenuView: View {
             .padding(.bottom, 6)
 
             VStack(spacing: 0) {
-                pubgToggleRow(title: "Player Box ESP", subtitle: "Hiển thị khung người chơi", isOn: .constant(true))
+                pubgToggleRow(title: "Player Box ESP", subtitle: "Hiển thị khung người chơi", isOn: $pubgBoxESP)
                 Divider().background(Color.white.opacity(0.08)).padding(.leading, 16)
-                pubgToggleRow(title: "Skeleton ESP", subtitle: "Hiển thị khung xương", isOn: .constant(false))
+                pubgToggleRow(title: "Skeleton ESP", subtitle: "Hiển thị khung xương", isOn: $pubgSkeletonESP)
                 Divider().background(Color.white.opacity(0.08)).padding(.leading, 16)
-                pubgToggleRow(title: "Item & Loot ESP", subtitle: "Hiển thị trang bị vật phẩm", isOn: .constant(false))
+                pubgToggleRow(title: "Item & Loot ESP", subtitle: "Hiển thị trang bị vật phẩm", isOn: $pubgItemESP)
             }
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -240,11 +240,11 @@ struct SwitchGameMenuView: View {
             .padding(.bottom, 6)
 
             VStack(spacing: 0) {
-                pubgToggleRow(title: "Aimbot Assistance", subtitle: "Hỗ trợ ngắm mục tiêu", isOn: .constant(false))
+                pubgToggleRow(title: "Aimbot Assistance", subtitle: "Hỗ trợ ngắm mục tiêu", isOn: $pubgAimbot)
                 Divider().background(Color.white.opacity(0.08)).padding(.leading, 16)
-                pubgToggleRow(title: "No Recoil", subtitle: "Giảm giật tâm súng", isOn: .constant(true))
+                pubgToggleRow(title: "No Recoil", subtitle: "Giảm giật tâm súng", isOn: $pubgNoRecoil)
                 Divider().background(Color.white.opacity(0.08)).padding(.leading, 16)
-                pubgToggleRow(title: "FOV Circle", subtitle: "Vòng tròn tầm nhìn", isOn: .constant(true))
+                pubgToggleRow(title: "FOV Circle", subtitle: "Vòng tròn tầm nhìn", isOn: $pubgFOVCircle)
             }
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -319,7 +319,7 @@ struct SwitchGameMenuView: View {
         .padding(.vertical, 13)
     }
 
-    // MARK: - Patch Section (Dành cho các game khác như Free Fire, Liên Quân,...)
+    // MARK: - Patch Section (Các game khác)
 
     private var patchSection: some View {
         VStack(spacing: 0) {
@@ -328,7 +328,6 @@ struct SwitchGameMenuView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white.opacity(0.5))
                 Spacer()
-                // HACK button
                 Button(action: applyHack) {
                     HStack(spacing: 6) {
                         if isPatching {
@@ -509,16 +508,17 @@ struct SwitchGameMenuView: View {
     }
 
     // MARK: - Toggle Names
+
     private func toggleName(_ id: Int) -> String {
         switch app.bundleID {
-        case "com.garena.game.kgvn": // Liên Quân
+        case "com.garena.game.kgvn":
             switch id {
             case 1: return "hack map"
             case 2: return "unlock skin"
             case 3: return "cam xa" 
             default: return "Toggle \(id)"
             }
-        case "com.dts.freefireth", "com.dts.freefiremax": // Free Fire
+        case "com.dts.freefireth", "com.dts.freefiremax":
             switch id {
             case 1: return "Toggle 1"
             case 2: return "Toggle 2"
@@ -527,16 +527,7 @@ struct SwitchGameMenuView: View {
             case 5: return "Toggle 5"
             default: return "Toggle \(id)"
             }
-        case "vn.vng.pubgmobile", "com.tencent.ig", "com.pubg.krmobile": // PUBG (fallback nếu chạy qua logic cũ)
-            switch id {
-            case 1: return "Toggle 1"
-            case 2: return "Toggle 2"
-            case 3: return "Toggle 3"
-            case 4: return "Toggle 4"
-            case 5: return "Toggle 5"
-            default: return "Toggle \(id)"
-            }
-        case "com.gameversestudio.modern.ops.fps.gun.games": // Modern Ops
+        case "com.gameversestudio.modern.ops.fps.gun.games":
             switch id {
             case 1: return "Toggle 1"
             case 2: return "Toggle 2"
@@ -583,11 +574,9 @@ struct SwitchGameMenuView: View {
     private func applyHack() {
         guard !isPatching else { return }
         
-        // Nếu là PUBG, cho phép chạy trực tiếp các hành động patch
         if isPUBG(app.bundleID) {
             isPatching = true
             DispatchQueue.global(qos: .userInitiated).async {
-                // Giả lập tiến trình áp dụng patch cho PUBG
                 Thread.sleep(forTimeInterval: 1.0)
                 DispatchQueue.main.async {
                     isPatching = false
